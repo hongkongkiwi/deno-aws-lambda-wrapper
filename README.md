@@ -4,280 +4,151 @@ A lightweight wrapper for AWS Lambda Adapter optimized for Deno runtime environm
 
 ## Features
 
-- 🦕 First-class Deno support
+- 🦕 First-class Deno support with AWS Lambda Powertools
 - ⚡️ AWS Lambda integration made simple
-- 🔄 Seamless request/response handling
+- 🔄 Seamless request/response handling for API Gateway v1/v2
 - 🛡️ Type-safe with TypeScript
 - 🚀 Minimal overhead
 - 📦 Zero external dependencies
 - 💨 Fast cold starts
-- 🔍 Easy debugging
+- 🔍 Easy debugging with environment variables
 
 ## Overview
 
-This wrapper simplifies the process of running Deno applications on AWS Lambda using the AWS Lambda Adapter. It provides a clean interface to handle HTTP requests and responses while maintaining Deno's security and performance benefits.
+This wrapper simplifies the process of running Deno applications on AWS Lambda using the AWS Lambda Adapter. It provides a clean interface to handle HTTP requests, events, and health checks while maintaining Deno's security and performance benefits.
 
 ## Installation
 
-To use this adapter in your Deno project, you can import it directly from the URL:
+To use this adapter in your Deno project, import the required dependencies:
 
-\```ts
-import { createHttpHandler, createEventHandler, createHealthcheckHandler } from "https://deno.land/x/aws_lambda_adapter/mod.ts";
-\```
-
-You can also find example test utilities in test_handler.ts.
+```ts
+import { startLambdaServer } from "./mod.ts";
+import { Logger } from "@aws-lambda-powertools/logger";
+import type {
+  Context,
+  APIGatewayProxyEvent,
+  APIGatewayProxyEventV2,
+  APIGatewayProxyResult,
+  APIGatewayProxyResultV2,
+} from "npm:@types/aws-lambda";
+```
 
 ## Quick Start
 
-The adapter provides three main handler types:
+The adapter provides three main handler types that can be used together:
 
 ### HTTP Handler
 
-For web applications and APIs:
+For handling API Gateway requests:
 
-\```ts
-const handler = createHttpHandler({
-  async fetch(request) {
-    return new Response("Hello from Deno on AWS Lambda!");
-  },
-  healthcheck: async () => {
-    return new Response("OK", { status: 200 });
+```ts
+const httpHandler = async (
+  event: APIGatewayProxyEvent | APIGatewayProxyEventV2,
+  context: Context
+): Promise<APIGatewayProxyResult | APIGatewayProxyResultV2> => {
+  try {
+    logger.info("Received HTTP request", { event, context });
+    const method = 'httpMethod' in event ? event.httpMethod : event.requestContext.http.method;
+    const path = 'path' in event ? event.path : event.requestContext.http.path;
+    
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: "Hello from HTTP handler!",
+        path,
+        method,
+        requestId: context.awsRequestId,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    };
+  } catch (error) {
+    logger.error("Error in HTTP handler", { error });
+    throw error;
   }
-});
-
-export { handler };
-\```
+};
+```
 
 ### Event Handler
 
-For processing AWS events (S3, SQS, etc.):
+For processing AWS events:
 
-\```ts
-const handler = createEventHandler({
-  async handle(event, context) {
-    console.log("Processing event:", event);
+```ts
+const eventHandler = async <T = unknown, R = unknown>(
+  event: T,
+  context: Context
+): Promise<R> => {
+  try {
+    logger.info("Received event", { event, context });
     return {
-      statusCode: 200,
-      body: "Event processed successfully"
-    };
-  },
-  healthcheck: async () => {
-    return { status: "healthy" };
+      message: "Hello from event handler!",
+      event,
+      requestId: context.awsRequestId,
+    } as R;
+  } catch (error) {
+    logger.error("Error in event handler", { error });
+    throw error;
   }
-});
+};
+```
 
-export { handler };
-\```
+### Health Check Handler
 
-### Healthcheck Handler
+A health check handler is required by AWS Lambda Adapter to ensure that your function is healthy and ready to receive requests. A default handler is provided for convenience.
 
-For dedicated health monitoring endpoints:
+If you want to implement a custom health check handler, you can do so by providing a custom function. For example:
 
-\```ts
-const handler = createHealthcheckHandler({
-  async check() {
-    // Perform health checks
-    return {
-      status: "healthy",
-      checks: {
-        database: "ok",
-        cache: "ok",
-        externalApi: "ok"
+```ts
+const healthHandler = async (req: Request): Promise<Response> => {
+  try {
+    logger.info("Health check requested", { path: new URL(req.url).pathname });
+    return new Response(
+      JSON.stringify({
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
       }
-    };
+    );
+  } catch (error) {
+    logger.error("Error in health check handler", { error });
+    throw error;
   }
-});
-\```
+};
+```
 
-## API Reference
+## Server Setup
 
-### createHttpHandler(options)
+Initialize the Lambda server with all handlers:
 
-Creates an HTTP-focused Lambda handler with the following options:
+```ts
+const server = startLambdaServer({
+  httpHandler,
+  eventHandler,
+  healthHandler,
+  logger,
+})();
+```
 
-- `fetch`: Required. Function handling HTTP requests
-- `healthcheck`: Optional. Health check endpoint handler
-- `onError`: Optional. Custom error handler
-- `logger`: Optional. Custom logging implementation
+## Graceful Shutdown
 
-### createEventHandler(options)
+Handle Deno signals for clean shutdown:
 
-Creates an event-processing Lambda handler:
+```ts
+let isShuttingDown = false;
 
-- `handle`: Required. Function processing AWS events
-- `healthcheck`: Optional. Health check implementation
-- `onError`: Optional. Custom error handler
-- `logger`: Optional. Custom logging implementation
+const shutdown = () => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  Deno.exit(0);
+};
 
-### createHealthcheckHandler(options)
-
-Creates a dedicated health check handler:
-
-- `check`: Required. Function performing health checks
-- `onError`: Optional. Custom error handler
-- `logger`: Optional. Custom logging implementation
-
-## Handler Interfaces
-
-\```ts
-interface HttpHandlerOptions {
-  fetch: (request: Request) => Promise<Response>;
-  healthcheck?: () => Promise<Response>;
-  onError?: (error: Error) => Response;
-  logger?: Logger;
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  Deno.addSignalListener(signal, shutdown);
 }
-
-interface EventHandlerOptions<T = any> {
-  handle: (event: T, context: Context) => Promise<any>;
-  healthcheck?: () => Promise<any>;
-  onError?: (error: Error) => any;
-  logger?: Logger;
-}
-
-interface HealthcheckHandlerOptions {
-  check: () => Promise<any>;
-  onError?: (error: Error) => any;
-  logger?: Logger;
-}
-\```
-
-## Health Checks
-
-Implement health checks for monitoring and AWS ALB integration:
-
-\```ts
-const handler = createHttpHandler({
-  fetch: async (request) => {
-    // Main request handling
-  },
-  healthcheck: async () => {
-    // Check database connection
-    await db.ping();
-    // Check external services
-    await checkExternalServices();
-    
-    return new Response("Healthy", { status: 200 });
-  }
-});
-\```
-
-## Environment Variables
-
-- `LAMBDA_TASK_ROOT`: Set by AWS Lambda
-- `AWS_LAMBDA_RUNTIME_API`: Set by AWS Lambda
-- `DEBUG`: Enable debug logging (optional)
-
-## Deployment
-
-1. Build your Deno application
-2. Package it with required permissions
-3. Deploy to AWS Lambda using the Deno runtime
-
-Example deployment using Terraform:
-
-\```hcl
-resource "aws_lambda_function" "deno_app" {
-  filename         = "function.zip"
-  handler          = "handler.handler"
-  runtime          = "provided.al2"
-  function_name    = "deno-app"
-  role            = aws_iam_role.lambda_role.arn
-  
-  environment {
-    variables = {
-      DENO_DEPLOYMENT = "production"
-    }
-  }
-}
-\```
-
-## Error Handling
-
-Custom error handling for each handler type:
-
-\```ts
-// HTTP Handler
-const httpHandler = createHttpHandler({
-  fetch: async (request) => {
-    // Your request handling logic
-  },
-  onError: (error) => {
-    console.error("HTTP error:", error);
-    return new Response("Internal Server Error", { status: 500 });
-  }
-});
-
-// Event Handler
-const eventHandler = createEventHandler({
-  handle: async (event) => {
-    // Your event handling logic
-  },
-  onError: (error) => {
-    console.error("Event processing error:", error);
-    return { statusCode: 500, body: "Processing failed" };
-  }
-});
-\```
-
-## Logging
-
-Built-in logging support with customization options:
-
-\```ts
-const handler = createHttpHandler({
-  fetch: async (request) => {
-    // Your request handling logic
-  },
-  logger: {
-    debug: console.debug,
-    info: console.info,
-    warn: console.warn,
-    error: console.error
-  }
-});
-\```
-
-## Examples
-
-### HTTP API Server
-
-\```ts
-const handler = createHttpHandler({
-  async fetch(request) {
-    const { pathname } = new URL(request.url);
-    
-    switch (pathname) {
-      case "/":
-        return new Response("Welcome!");
-      case "/api":
-        return Response.json({ message: "API endpoint" });
-      default:
-        return new Response("Not Found", { status: 404 });
-    }
-  },
-  healthcheck: async () => {
-    return new Response("OK", { status: 200 });
-  }
-});
-\```
-
-### S3 Event Processor
-
-\```ts
-const handler = createEventHandler({
-  async handle(event) {
-    for (const record of event.Records) {
-      if (record.eventName === "ObjectCreated:Put") {
-        await processS3Object(record.s3);
-      }
-    }
-    return { processed: event.Records.length };
-  },
-  healthcheck: async () => {
-    return { status: "healthy", timestamp: Date.now() };
-  }
-});
-\```
+```
 
 ## Contributing
 
@@ -290,15 +161,3 @@ const handler = createEventHandler({
 ## License
 
 MIT License - see LICENSE file for details
-
-## Support
-
-- GitHub Issues: [Report a bug](https://github.com/your-repo/issues)
-- Discord: [Join our community](https://discord.gg/your-server)
-- Twitter: [@YourHandle](https://twitter.com/your-handle)
-
-## Acknowledgments
-
-- AWS Lambda team
-- Deno community
-- Contributors
