@@ -7,6 +7,7 @@ A lightweight wrapper for AWS Lambda Adapter optimized for Deno runtime environm
 - 🦕 First-class Deno support with AWS Lambda Powertools
 - ⚡️ AWS Lambda integration made simple
 - 🔄 Seamless request/response handling for API Gateway v1/v2
+- 🌊 Support for both HTTP streaming and buffered handlers
 - 🛡️ Type-safe with TypeScript
 - 🚀 Minimal overhead
 - 📦 Zero external dependencies
@@ -22,7 +23,7 @@ This wrapper simplifies the process of running Deno applications on AWS Lambda u
 To use this adapter in your Deno project, import the required dependencies:
 
 ```ts
-import { startLambdaServer } from "./mod.ts";
+import { startLambdaServer } from "https://raw.githubusercontent.com/hongkongkiwi/deno-aws-lambda-wrapper/refs/heads/main/mod.ts";
 import { Logger } from "@aws-lambda-powertools/logger";
 import type {
   Context,
@@ -35,11 +36,13 @@ import type {
 
 ## Quick Start
 
-The adapter provides three main handler types that can be used together:
+The adapter supports both buffered and streaming handlers. Choose the appropriate type based on your needs:
 
-### HTTP Handler
+### Buffered Handlers
 
-For handling API Gateway requests:
+For traditional request-response patterns with complete payloads:
+
+#### HTTP Handler (Buffered)
 
 ```ts
 const httpHandler = async (
@@ -68,6 +71,111 @@ const httpHandler = async (
     throw error;
   }
 };
+```
+
+### Streaming Handlers
+
+For scenarios requiring real-time data streaming:
+
+#### HTTP Handler (Streaming)
+
+```ts
+const streamingHttpHandler = async (
+  event: StreamingAPIGatewayProxyEvent | StreamingAPIGatewayProxyEventV2,
+  context: Context
+): Promise<StreamingResponse> => {
+  try {
+    const method = 'httpMethod' in event ? event.httpMethod : event.requestContext.http.method;
+    const path = 'path' in event ? event.path : event.requestContext.http.path;
+
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+
+    // Start async streaming
+    (async () => {
+      try {
+        for (let i = 0; i < 5; i++) {
+          const chunk = {
+            message: `Streaming chunk ${i + 1}`,
+            path,
+            method,
+            requestId: context.awsRequestId,
+            timestamp: new Date().toISOString(),
+          };
+          await writer.write(new TextEncoder().encode(JSON.stringify(chunk) + "\n"));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      } finally {
+        await writer.close();
+      }
+    })();
+
+    return {
+      statusCode: 200,
+      body: readable,
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Transfer-Encoding": "chunked",
+      },
+    };
+  } catch (error) {
+    logger.error("Error in streaming HTTP handler", { error });
+    throw error;
+  }
+};
+```
+
+#### Binary Streaming
+
+For streaming binary data like images:
+
+```ts
+const binaryStreamingHandler = async (
+  event: StreamingAPIGatewayProxyEvent | StreamingAPIGatewayProxyEventV2,
+  context: Context
+): Promise<StreamingResponse> => {
+  const stream = new ReadableStream({
+    start: async (controller) => {
+      const chunk = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+      controller.enqueue(chunk);
+
+      for (let i = 0; i < 3; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const dataChunk = new Uint8Array(1024).fill(i);
+        controller.enqueue(dataChunk);
+      }
+
+      controller.close();
+    },
+  });
+
+  return {
+    statusCode: 200,
+    body: stream,
+    isBase64Encoded: true,
+    contentType: "image/jpeg",
+    headers: {
+      "Content-Type": "image/jpeg",
+      "Transfer-Encoding": "chunked",
+    },
+  };
+};
+```
+
+## Configuration
+
+### Environment Variables
+
+Configure your Lambda function with these environment variables:
+
+```bash
+# Streaming mode
+AWS_LWA_INVOKE_MODE=response_stream  # For streaming handlers
+AWS_LWA_INVOKE_MODE=buffered         # For buffered handlers (default)
+
+# Logging
+POWERTOOLS_DEV=true                  # Enable development mode logging
+LOG_LEVEL=DEBUG                      # Set logging level
 ```
 
 ### Event Handler

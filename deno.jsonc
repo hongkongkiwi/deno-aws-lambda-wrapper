@@ -1,6 +1,5 @@
 {
-  "name": "@hongkongkiwi/aws-lambda-wrapper",
-  "version": "0.0.1",
+  "name": "@patrolsix-shared/aws-lambda-wrapper",
   "exports": {
     ".": "./mod.ts"
   },

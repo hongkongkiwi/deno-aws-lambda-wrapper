@@ -1,5 +1,5 @@
 import { startLambdaServer } from "./mod.ts";
-import { Logger } from "@aws-lambda-powertools/logger";
+import { Logger } from "npm:@aws-lambda-powertools/logger";
 import type {
   Context,
   APIGatewayProxyEvent,
@@ -10,9 +10,11 @@ import type {
 
 Deno.env.set("POWERTOOLS_DEV", "true");
 Deno.env.set("LOG_LEVEL", "DEBUG");
+Deno.env.set("AWS_LWA_INVOKE_MODE", "buffered");
 
-const logger = new Logger({ serviceName: "lambda-server" });
+const logger = new Logger({ serviceName: "lambda-server", logLevel: "DEBUG" });
 
+// deno-lint-ignore require-await
 const httpHandler = async (
   event: APIGatewayProxyEvent | APIGatewayProxyEventV2,
   context: Context
@@ -40,6 +42,7 @@ const httpHandler = async (
   }
 };
 
+// deno-lint-ignore require-await
 const eventHandler = async <T = unknown, R = unknown>(
   event: T,
   context: Context
@@ -57,6 +60,7 @@ const eventHandler = async <T = unknown, R = unknown>(
   }
 };
 
+// deno-lint-ignore require-await
 const healthHandler = async (req: Request): Promise<Response> => {
   try {
     logger.info("Health check requested", { path: new URL(req.url).pathname });
@@ -75,11 +79,11 @@ const healthHandler = async (req: Request): Promise<Response> => {
   }
 };
 
-const server = startLambdaServer({
+startLambdaServer({
   httpHandler,
   eventHandler,
   healthHandler,
-  logger,
+  logger: logger as unknown as Logger,
 })();
 
 // Handle Deno signals
