@@ -1,0 +1,17 @@
+{
+  "name": "@hongkongkiwi/aws-lambda-wrapper",
+  "version": "0.0.1",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "nodeModulesDir": "auto",
+  "imports": {
+    "@aws-lambda-powertools/logger": "npm:@aws-lambda-powertools/logger@^2.10.0",
+    "@types/aws-lambda": "npm:@types/aws-lambda@^8.10.145"
+  },
+  "compilerOptions": {
+    "types": [
+      "npm:@types/aws-lambda@^8.10.145"
+    ]
+  }
+} 

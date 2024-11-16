@@ -1,0 +1,31 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:@aws-lambda-powertools/logger@^2.10.0": "2.10.0",
+    "npm:@types/aws-lambda@^8.10.145": "8.10.145"
+  },
+  "npm": {
+    "@aws-lambda-powertools/commons@2.10.0": {
+      "integrity": "sha512-XHC0FW/k33JWc2SZ9pbOJQPzNCMoRGnRuX/Cx1CYXRvRnaLYkPNRPrPYvGWy1OInAS3GSK6zxP1Asx0k4uaqSw=="
+    },
+    "@aws-lambda-powertools/logger@2.10.0": {
+      "integrity": "sha512-QsVnoCBf6gKneGmSrIj1nxf34jWWOyDu4PO3I+VwkaH60lph2dIVcF1pP1zZagxUoYt9WWiddHcGQ7ORo0z5iw==",
+      "dependencies": [
+        "@aws-lambda-powertools/commons",
+        "lodash.merge"
+      ]
+    },
+    "@types/aws-lambda@8.10.145": {
+      "integrity": "sha512-dtByW6WiFk5W5Jfgz1VM+YPA21xMXTuSFoLYIDY0L44jDLLflVPtZkYuu3/YxpGcvjzKFBZLU+GyKjR0HOYtyw=="
+    },
+    "lodash.merge@4.6.2": {
+      "integrity": "sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@aws-lambda-powertools/logger@^2.10.0",
+      "npm:@types/aws-lambda@^8.10.145"
+    ]
+  }
+}
